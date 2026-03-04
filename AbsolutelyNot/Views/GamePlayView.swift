@@ -5,6 +5,7 @@ struct GamePlayView: View {
     @State private var navigateToGameOver = false
     @State private var showRules = false
     @State private var cardFlipRotation: Double = 0
+    @State private var lastRevealedPlayerIndex: Int = 0
 
     init(config: GameConfig) {
         _viewModel = StateObject(wrappedValue: GamePlayViewModel(config: config))
@@ -21,21 +22,12 @@ struct GamePlayView: View {
             return localPlayerIndex
         }
         if isPassAndPlay {
-            // Show the current player only if human; otherwise keep showing
-            // the human who will act next (skip AI players)
             let idx = viewModel.currentPlayerIndex
             if !viewModel.players[idx].isAI {
                 return idx
             }
-            // Find the next human player in turn order
-            let count = viewModel.players.count
-            for offset in 1..<count {
-                let nextIdx = (idx + offset) % count
-                if !viewModel.players[nextIdx].isAI {
-                    return nextIdx
-                }
-            }
-            return idx
+            // During CPU turns, keep showing the last human who played
+            return lastRevealedPlayerIndex
         }
         return viewModel.players.firstIndex(where: { !$0.isAI }) ?? 0
     }
@@ -164,6 +156,7 @@ struct GamePlayView: View {
                 playerEmoji: viewModel.interstitialPlayerEmoji
             ) {
                 viewModel.dismissInterstitial()
+                lastRevealedPlayerIndex = viewModel.currentPlayerIndex
             }
         }
         .navigationDestination(isPresented: $navigateToGameOver) {
