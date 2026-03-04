@@ -44,6 +44,7 @@
 		AA000023 /* FeltTextureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000023 /* FeltTextureView.swift */; };
 		AA000024 /* ConfettiView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000024 /* ConfettiView.swift */; };
 		AA000025 /* RulesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000025 /* RulesView.swift */; };
+		AA000026 /* AppLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000026 /* AppLogoView.swift */; };
 		AA000030 /* ScoreCalculatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000030 /* ScoreCalculatorTests.swift */; };
 		AA000031 /* GameEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000031 /* GameEngineTests.swift */; };
 		AA000032 /* AIStrategyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB000032 /* AIStrategyTests.swift */; };
@@ -112,6 +113,7 @@
 		AB000023 /* FeltTextureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeltTextureView.swift; sourceTree = "<group>"; };
 		AB000024 /* ConfettiView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfettiView.swift; sourceTree = "<group>"; };
 		AB000025 /* RulesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RulesView.swift; sourceTree = "<group>"; };
+		AB000026 /* AppLogoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogoView.swift; sourceTree = "<group>"; };
 		AB000030 /* ScoreCalculatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreCalculatorTests.swift; sourceTree = "<group>"; };
 		AB000031 /* GameEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameEngineTests.swift; sourceTree = "<group>"; };
 		AB000032 /* AIStrategyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIStrategyTests.swift; sourceTree = "<group>"; };
@@ -244,6 +246,7 @@
 				AB000023 /* FeltTextureView.swift */,
 				AB000024 /* ConfettiView.swift */,
 				AB000025 /* RulesView.swift */,
+				AB000026 /* AppLogoView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -487,6 +490,7 @@
 				AA000023 /* FeltTextureView.swift in Sources */,
 				AA000024 /* ConfettiView.swift in Sources */,
 				AA000025 /* RulesView.swift in Sources */,
+				AA000026 /* AppLogoView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

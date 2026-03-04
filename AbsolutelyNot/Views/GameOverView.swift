@@ -9,6 +9,7 @@ struct GameOverView: View {
     }
 
     @State private var showConfetti = false
+    @State private var rowsAppeared = false
 
     var body: some View {
         ZStack {
@@ -18,7 +19,10 @@ struct GameOverView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    // Winner announcement
+                    // Logo + Winner announcement
+                    AppLogoView(scale: 0.4)
+                        .padding(.top, 16)
+
                     if let winner = viewModel.winner {
                         VStack(spacing: 8) {
                             Text(winner.emoji)
@@ -32,13 +36,19 @@ struct GameOverView: View {
                                 .font(.system(size: 20, weight: .semibold, design: .rounded))
                                 .foregroundColor(.white)
                         }
-                        .padding(.top, 20)
                     }
 
                     // All results
                     VStack(spacing: 12) {
-                        ForEach(viewModel.results) { result in
+                        ForEach(Array(viewModel.results.enumerated()), id: \.element.id) { index, result in
                             ResultRow(result: result)
+                                .offset(x: rowsAppeared ? 0 : 60)
+                                .opacity(rowsAppeared ? 1.0 : 0.0)
+                                .animation(
+                                    .spring(response: 0.5, dampingFraction: 0.75)
+                                        .delay(Double(index) * 0.1),
+                                    value: rowsAppeared
+                                )
                         }
                     }
                     .padding(.horizontal, 20)
@@ -73,6 +83,9 @@ struct GameOverView: View {
         .onAppear {
             showConfetti = true
             HapticManager.notification(.success)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                rowsAppeared = true
+            }
         }
         .navigationDestination(isPresented: $navigateToSetup) {
             GameSetupView()
@@ -137,7 +150,11 @@ struct ResultRow: View {
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(result.isWinner ? AppColors.goldAccent.opacity(0.1) : Color.black.opacity(0.2))
+                .fill(
+                    result.isWinner
+                        ? LinearGradient(colors: [AppColors.goldAccent.opacity(0.15), AppColors.pebbleGoldDark.opacity(0.08)], startPoint: .leading, endPoint: .trailing)
+                        : LinearGradient(colors: [Color.black.opacity(0.2), Color.black.opacity(0.2)], startPoint: .leading, endPoint: .trailing)
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)

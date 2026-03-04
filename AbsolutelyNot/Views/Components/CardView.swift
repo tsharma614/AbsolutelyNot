@@ -20,6 +20,10 @@ struct CardView: View {
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(AppColors.goldAccent, lineWidth: 2)
 
+            RoundedRectangle(cornerRadius: 11)
+                .strokeBorder(Color.white.opacity(0.15), lineWidth: 1)
+                .padding(2)
+
             if isFaceUp {
                 Text("\(card.value)")
                     .font(.system(size: 32, weight: .bold, design: .rounded))

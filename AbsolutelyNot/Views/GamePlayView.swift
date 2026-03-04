@@ -195,7 +195,7 @@ struct GamePlayView: View {
                     .foregroundColor(AppColors.goldAccent)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
-                    .background(Capsule().fill(Color.black.opacity(0.5)))
+                    .background(Capsule().fill(.ultraThinMaterial))
             } else if let player = viewModel.currentPlayer {
                 let isMyTurn: Bool = {
                     if viewModel.isMultiplayer {
@@ -208,7 +208,7 @@ struct GamePlayView: View {
                     .foregroundColor(isMyTurn ? AppColors.goldAccent : .white.opacity(0.7))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
-                    .background(Capsule().fill(Color.black.opacity(0.5)))
+                    .background(Capsule().fill(.ultraThinMaterial))
             }
         }
     }
@@ -269,11 +269,12 @@ struct GamePlayView: View {
                         Text("Take")
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
-                            .frame(width: 70, height: 36)
+                            .frame(width: 74, height: 38)
                             .background(
-                                RoundedRectangle(cornerRadius: 10)
+                                Capsule()
                                     .fill(viewModel.canTake ? AppColors.cardRed : Color.gray.opacity(0.5))
                             )
+                            .shadow(color: viewModel.canTake ? AppColors.cardRed.opacity(0.4) : .clear, radius: 4, y: 2)
                     }
                     .disabled(!viewModel.canTake)
                     .accessibilityIdentifier("takeButton")
@@ -286,11 +287,12 @@ struct GamePlayView: View {
                         Text("Pass")
                             .font(.system(size: 14, weight: .bold, design: .rounded))
                             .foregroundColor(AppColors.textDark)
-                            .frame(width: 70, height: 36)
+                            .frame(width: 74, height: 38)
                             .background(
-                                RoundedRectangle(cornerRadius: 10)
+                                Capsule()
                                     .fill(viewModel.canPass ? AppColors.goldAccent : Color.gray.opacity(0.5))
                             )
+                            .shadow(color: viewModel.canPass ? AppColors.goldAccent.opacity(0.4) : .clear, radius: 4, y: 2)
                     }
                     .disabled(!viewModel.canPass)
                     .accessibilityIdentifier("passButton")
@@ -302,7 +304,13 @@ struct GamePlayView: View {
         .frame(height: bottomBarHeight)
         .background(
             Rectangle()
-                .fill(Color.black.opacity(0.3))
+                .fill(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.15), Color.black.opacity(0.45)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
         )
     }
 
@@ -349,17 +357,25 @@ struct InterstitialView: View {
     let playerEmoji: String
     let onDismiss: () -> Void
 
+    @State private var textAppeared = false
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.9).ignoresSafeArea()
 
             VStack(spacing: 20) {
+                AppLogoView(scale: 0.3)
+                    .opacity(0.35)
+
                 Text(playerEmoji)
                     .font(.system(size: 80))
 
                 Text("Pass to \(playerName)")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundColor(.white)
+                    .scaleEffect(textAppeared ? 1.0 : 0.6)
+                    .opacity(textAppeared ? 1.0 : 0.0)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.65), value: textAppeared)
 
                 Text("Tap anywhere to continue")
                     .font(.system(size: 16))
@@ -368,6 +384,9 @@ struct InterstitialView: View {
         }
         .onTapGesture {
             onDismiss()
+        }
+        .onAppear {
+            textAppeared = true
         }
     }
 }

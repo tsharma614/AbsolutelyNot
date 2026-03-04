@@ -23,15 +23,15 @@ struct LobbyView: View {
             AppColors.feltGreen.ignoresSafeArea()
 
             VStack(spacing: 24) {
-                Text(mode == .wifi ? "WiFi Game" : "Online Game")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundColor(AppColors.goldAccent)
+                AppLogoView(scale: 0.5)
+                    .padding(.top, 4)
 
                 // Connection status
                 HStack(spacing: 8) {
                     Circle()
                         .fill(statusColor)
                         .frame(width: 10, height: 10)
+                        .modifier(PulsingDot(isPulsing: isPulsing))
                     Text(statusText)
                         .font(.system(size: 14))
                         .foregroundColor(.white.opacity(0.7))
@@ -79,12 +79,18 @@ struct LobbyView: View {
                         .foregroundColor(.white)
 
                     ForEach(displayedPlayers) { player in
-                        HStack {
+                        HStack(spacing: 0) {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(AppColors.goldAccent)
+                                .frame(width: 3, height: 28)
+                                .padding(.trailing, 12)
+
                             Text(player.emoji)
                                 .font(.system(size: 24))
                             Text(player.name)
                                 .font(.system(size: 16))
                                 .foregroundColor(.white)
+                                .padding(.leading, 4)
                             Spacer()
                         }
                         .padding(.horizontal, 16)
@@ -199,6 +205,11 @@ struct LobbyView: View {
         playerName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    private var isPulsing: Bool {
+        if case .connecting = service.connectionState { return true }
+        return false
+    }
+
     private var statusColor: Color {
         switch service.connectionState {
         case .connected: return .green
@@ -278,6 +289,29 @@ struct LobbyView: View {
         gameConfig = config
         try? service.send(.startGame(config))
         navigateToGame = true
+    }
+}
+
+struct PulsingDot: ViewModifier {
+    let isPulsing: Bool
+    @State private var isAnimating = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(isPulsing && isAnimating ? 1.5 : 1.0)
+            .opacity(isPulsing && isAnimating ? 0.5 : 1.0)
+            .animation(
+                isPulsing
+                    ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+                    : .default,
+                value: isAnimating
+            )
+            .onChange(of: isPulsing) { _, newValue in
+                isAnimating = newValue
+            }
+            .onAppear {
+                if isPulsing { isAnimating = true }
+            }
     }
 }
 

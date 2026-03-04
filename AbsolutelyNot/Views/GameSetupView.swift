@@ -15,16 +15,14 @@ struct GameSetupView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     // Title
-                    VStack(spacing: 4) {
-                        Text("Absolutely Not!")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
-                            .foregroundColor(AppColors.goldAccent)
+                    VStack(spacing: 8) {
+                        AppLogoView(scale: 0.7)
 
                         Text("A game of reluctant card collecting")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundColor(.white.opacity(0.6))
                     }
-                    .padding(.top, 20)
+                    .padding(.top, 12)
 
                     // Player count
                     VStack(spacing: 8) {
@@ -111,8 +109,11 @@ struct GameSetupView: View {
                                 RoundedRectangle(cornerRadius: 16)
                                     .fill(viewModel.isValid ? AppColors.goldAccent : Color.gray)
                             )
+                            .shadow(color: viewModel.isValid ? AppColors.goldAccent.opacity(0.4) : .clear, radius: 8, y: 4)
                     }
                     .disabled(!viewModel.isValid)
+                    .scaleEffect(viewModel.isValid ? 1.0 : 0.97)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.isValid)
                     .accessibilityIdentifier("startGameButton")
 
                     // WiFi Multiplayer button
@@ -130,6 +131,10 @@ struct GameSetupView: View {
                         .background(
                             RoundedRectangle(cornerRadius: 16)
                                 .fill(Color.white.opacity(0.15))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .strokeBorder(AppColors.goldAccent.opacity(0.3), lineWidth: 1)
                         )
                     }
                 }
