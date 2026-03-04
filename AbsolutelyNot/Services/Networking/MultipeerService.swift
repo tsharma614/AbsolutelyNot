@@ -2,7 +2,7 @@ import Foundation
 import MultipeerConnectivity
 
 final class MultipeerService: NSObject, MultiplayerManager, ObservableObject {
-    private let serviceType = "absolutelynot"
+    private let serviceType = "absnot-game"
 
     private var peerID: MCPeerID!
     private var session: MCSession!
