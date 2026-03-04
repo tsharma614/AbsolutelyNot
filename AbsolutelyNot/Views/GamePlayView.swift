@@ -222,6 +222,11 @@ struct GamePlayView: View {
 
     private var bottomBarHeight: CGFloat { 190 }
 
+    /// Whether private info (pebbles, cards) should be hidden in the bottom bar
+    private var hidePrivateInfo: Bool {
+        isPassAndPlay && !viewModel.turnRevealed
+    }
+
     private var bottomBar: some View {
         VStack(spacing: 6) {
             // Player info bar
@@ -241,19 +246,25 @@ struct GamePlayView: View {
                         .transition(.opacity)
                 }
 
-                HStack(spacing: 3) {
-                    PebbleView(size: 12)
-                    Text("\(bottomPlayer.pebbles)")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundColor(AppColors.goldAccent)
+                if !hidePrivateInfo {
+                    HStack(spacing: 3) {
+                        PebbleView(size: 12)
+                        Text("\(bottomPlayer.pebbles)")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundColor(AppColors.goldAccent)
+                    }
                 }
             }
             .padding(.horizontal, 14)
 
             // Cards + Action buttons
             HStack(alignment: .bottom, spacing: 8) {
-                PlayerHandView(cards: bottomPlayer.collectedCards, highlightCardId: viewModel.lastAddedCardId)
-                    .frame(maxWidth: .infinity)
+                if hidePrivateInfo {
+                    Spacer()
+                } else {
+                    PlayerHandView(cards: bottomPlayer.collectedCards, highlightCardId: viewModel.lastAddedCardId)
+                        .frame(maxWidth: .infinity)
+                }
 
                 // Action buttons
                 VStack(spacing: 6) {

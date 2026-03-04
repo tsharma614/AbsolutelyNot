@@ -19,6 +19,8 @@ final class GamePlayViewModel: ObservableObject {
     @Published var isFlavorBold = false
     @Published var lastAddedCardId: Int? = nil
     @Published var showCardFlip = false
+    /// In pass-and-play, true once the current human has dismissed the interstitial
+    @Published var turnRevealed = true
 
     private let logger: GameLogger
     private var aiTask: Task<Void, Never>?
@@ -170,6 +172,7 @@ final class GamePlayViewModel: ObservableObject {
     // MARK: - Action properties
 
     var canTake: Bool {
+        if isPassAndPlay && !turnRevealed { return false }
         guard case .playerTurn = state.phase else { return false }
         guard currentCard != nil && !isGameOver else { return false }
         if isMultiplayer {
@@ -179,6 +182,7 @@ final class GamePlayViewModel: ObservableObject {
     }
 
     var canPass: Bool {
+        if isPassAndPlay && !turnRevealed { return false }
         guard case .playerTurn = state.phase else { return false }
         guard let player = currentPlayer else { return false }
         guard player.canPass && !isGameOver else { return false }
@@ -348,6 +352,7 @@ final class GamePlayViewModel: ObservableObject {
     }
 
     private func showInterstitialFor(player: Player) {
+        turnRevealed = false
         interstitialPlayerName = player.name
         interstitialPlayerEmoji = player.emoji
         Task {
@@ -358,6 +363,7 @@ final class GamePlayViewModel: ObservableObject {
 
     func dismissInterstitial() {
         showInterstitial = false
+        turnRevealed = true
     }
 
     /// Check if an AI needs to draw after a take
