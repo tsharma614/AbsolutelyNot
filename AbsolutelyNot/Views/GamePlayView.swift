@@ -15,14 +15,27 @@ struct GamePlayView: View {
     }
 
     /// The player shown at the bottom bar.
-    /// In multiplayer: the local player. In pass-and-play: the current player. Otherwise: the sole human.
+    /// In multiplayer: the local player. In pass-and-play: the current human. Otherwise: the sole human.
     private var bottomPlayerIndex: Int {
         if viewModel.isMultiplayer {
-            // Show the local player at the bottom
             return localPlayerIndex
         }
         if isPassAndPlay {
-            return viewModel.currentPlayerIndex
+            // Show the current player only if human; otherwise keep showing
+            // the human who will act next (skip AI players)
+            let idx = viewModel.currentPlayerIndex
+            if !viewModel.players[idx].isAI {
+                return idx
+            }
+            // Find the next human player in turn order
+            let count = viewModel.players.count
+            for offset in 1..<count {
+                let nextIdx = (idx + offset) % count
+                if !viewModel.players[nextIdx].isAI {
+                    return nextIdx
+                }
+            }
+            return idx
         }
         return viewModel.players.firstIndex(where: { !$0.isAI }) ?? 0
     }

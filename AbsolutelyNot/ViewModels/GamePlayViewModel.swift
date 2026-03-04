@@ -49,6 +49,8 @@ final class GamePlayViewModel: ObservableObject {
 
     /// Whether the human player should tap the deck
     var humanShouldDraw: Bool {
+        // Block draw while interstitial is showing (pass-and-play handoff)
+        if showInterstitial { return false }
         if case .awaitingDraw(let idx) = state.phase {
             if isMultiplayer {
                 return isLocalPlayerIndex(idx)
@@ -237,6 +239,12 @@ final class GamePlayViewModel: ObservableObject {
             let results = engine.rankedResults().map { ($0.player.name, $0.score) }
             logger.logGameEnd(rankedResults: results)
             return
+        }
+
+        // Pass-and-play: show interstitial before the next human draws
+        if isPassAndPlay, case .awaitingDraw(let drawIdx) = state.phase,
+           !state.players[drawIdx].isAI {
+            showInterstitialFor(player: state.players[drawIdx])
         }
 
         checkForAIDraw()
