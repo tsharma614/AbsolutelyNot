@@ -25,6 +25,12 @@ final class GamePlayViewModel: ObservableObject {
     private let isPassAndPlay: Bool
     private var engineCancellable: AnyCancellable?
 
+    // Multiplayer properties
+    private var multiplayerService: MultipeerService?
+    private(set) var localPlayerID: String?
+    private(set) var isMultiplayer = false
+    private var isHost = false
+
     var state: GameState { engine.state }
     var currentCard: Card? { state.currentCard }
     var pebblesOnCard: Int { state.pebblesOnCard }
@@ -44,16 +50,20 @@ final class GamePlayViewModel: ObservableObject {
     /// Whether the human player should tap the deck
     var humanShouldDraw: Bool {
         if case .awaitingDraw(let idx) = state.phase {
+            if isMultiplayer {
+                return isLocalPlayerIndex(idx)
+            }
             return !state.players[idx].isAI
         }
         return false
     }
 
+    // MARK: - Single-device init
+
     init(config: GameConfig, logger: GameLogger = .shared) {
         self.engine = GameEngine(config: config)
         self.logger = logger
         self.isPassAndPlay = config.aiFlags.filter({ !$0 }).count > 1
-        // Forward engine state changes to this ViewModel so the view re-renders
         self.engineCancellable = engine.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
@@ -71,15 +81,109 @@ final class GamePlayViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Multiplayer init
+
+    init(config: GameConfig, service: MultipeerService, localPlayerID: String, isHost: Bool, logger: GameLogger = .shared) {
+        self.engine = GameEngine(config: config)
+        self.logger = logger
+        self.isPassAndPlay = false
+        self.isMultiplayer = true
+        self.multiplayerService = service
+        self.localPlayerID = localPlayerID
+        self.isHost = isHost
+
+        self.engineCancellable = engine.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+
+        logger.logGameStart(config: config)
+        setupMultiplayerHandlers()
+
+        // Host broadcasts initial state and kicks off AI if needed
+        if isHost {
+            broadcastState()
+            checkForAITurn()
+        }
+    }
+
+    // MARK: - Multiplayer helpers
+
+    private func setupMultiplayerHandlers() {
+        multiplayerService?.onMessageReceived = { [weak self] message in
+            Task { @MainActor in
+                self?.handleMultiplayerMessage(message)
+            }
+        }
+    }
+
+    private func handleMultiplayerMessage(_ message: GameMessage) {
+        switch message {
+        case .playerAction(let action, let playerID):
+            guard isHost else { return }
+            handleRemoteAction(action, from: playerID)
+        case .gameState(let newState):
+            guard !isHost else { return }
+            engine.replaceState(newState)
+        default:
+            break
+        }
+    }
+
+    private func handleRemoteAction(_ action: PlayerAction, from playerID: String) {
+        guard isHost else { return }
+        // Verify it's this player's turn
+        let currentName = state.players[state.currentPlayerIndex].name
+        guard currentName == playerID else { return }
+
+        switch action {
+        case .take:
+            engine.takeCard()
+        case .pass:
+            engine.passCard()
+        case .draw:
+            engine.drawNextCard()
+        }
+        broadcastState()
+
+        if !isGameOver {
+            checkForAIDraw()
+            checkForAITurn()
+        }
+    }
+
+    private func broadcastState() {
+        guard isHost, let service = multiplayerService else { return }
+        try? service.send(.gameState(engine.state))
+    }
+
+    private func isLocalPlayerIndex(_ index: Int) -> Bool {
+        guard let localID = localPlayerID, index < state.players.count else { return false }
+        return state.players[index].name == localID
+    }
+
+    private var isLocalPlayerTurn: Bool {
+        isLocalPlayerIndex(state.currentPlayerIndex)
+    }
+
+    // MARK: - Action properties
+
     var canTake: Bool {
         guard case .playerTurn = state.phase else { return false }
-        return currentCard != nil && !isGameOver && isCurrentPlayerHuman
+        guard currentCard != nil && !isGameOver else { return false }
+        if isMultiplayer {
+            return isLocalPlayerTurn
+        }
+        return isCurrentPlayerHuman
     }
 
     var canPass: Bool {
         guard case .playerTurn = state.phase else { return false }
         guard let player = currentPlayer else { return false }
-        return player.canPass && !isGameOver && isCurrentPlayerHuman
+        guard player.canPass && !isGameOver else { return false }
+        if isMultiplayer {
+            return isLocalPlayerTurn
+        }
+        return isCurrentPlayerHuman
     }
 
     private var isCurrentPlayerHuman: Bool {
@@ -87,8 +191,18 @@ final class GamePlayViewModel: ObservableObject {
         return !player.isAI
     }
 
+    // MARK: - Actions
+
     func takeCard() {
         guard canTake else { return }
+
+        if isMultiplayer && !isHost {
+            // Client sends action to host
+            let playerID = localPlayerID ?? ""
+            try? multiplayerService?.send(.playerAction(.take, playerID: playerID))
+            return
+        }
+
         let player = state.players[currentPlayerIndex]
         let pebblesBefore = player.pebbles
         let cardPebblesBefore = pebblesOnCard
@@ -115,26 +229,39 @@ final class GamePlayViewModel: ObservableObject {
         HapticManager.impact(.medium)
         showFlavor(forced ? .forcedTake : .take)
 
-        // If game is over after take (empty draw pile), handle it
+        if isMultiplayer && isHost {
+            broadcastState()
+        }
+
         if isGameOver {
             let results = engine.rankedResults().map { ($0.player.name, $0.score) }
             logger.logGameEnd(rankedResults: results)
             return
         }
 
-        // If it's AI's turn to draw, auto-draw after delay
         checkForAIDraw()
     }
 
     /// Human taps the deck to draw the next card
     func drawNextCard() {
         guard humanShouldDraw else { return }
+
+        if isMultiplayer && !isHost {
+            let playerID = localPlayerID ?? ""
+            try? multiplayerService?.send(.playerAction(.draw, playerID: playerID))
+            return
+        }
+
         showCardFlip = true
         engine.drawNextCard()
         HapticManager.impact(.light)
         logger.log("\(currentPlayer?.name ?? "?"): DRAW — revealed \(currentCard?.value.description ?? "nil"), remaining: \(drawPileCount)", context: "GameEngine")
+
+        if isMultiplayer && isHost {
+            broadcastState()
+        }
         handlePostDraw()
-        // Reset flip state after animation
+
         Task {
             try? await Task.sleep(nanoseconds: 500_000_000)
             showCardFlip = false
@@ -146,6 +273,9 @@ final class GamePlayViewModel: ObservableObject {
         let playerName = currentPlayer?.name ?? "AI"
         engine.drawNextCard()
         logger.log("\(playerName): AI DRAW — revealed \(currentCard?.value.description ?? "nil"), remaining: \(drawPileCount)", context: "GameEngine")
+        if isMultiplayer && isHost {
+            broadcastState()
+        }
         handlePostDraw()
     }
 
@@ -157,7 +287,7 @@ final class GamePlayViewModel: ObservableObject {
         }
 
         // Pass-and-play: show interstitial if next player is a different human
-        if isPassAndPlay, let player = currentPlayer, !player.isAI {
+        if !isMultiplayer && isPassAndPlay, let player = currentPlayer, !player.isAI {
             showInterstitialFor(player: player)
         }
 
@@ -166,6 +296,13 @@ final class GamePlayViewModel: ObservableObject {
 
     func passCard() {
         guard canPass else { return }
+
+        if isMultiplayer && !isHost {
+            let playerID = localPlayerID ?? ""
+            try? multiplayerService?.send(.playerAction(.pass, playerID: playerID))
+            return
+        }
+
         let player = state.players[currentPlayerIndex]
         let pebblesBefore = player.pebbles
         let cardPebblesBefore = pebblesOnCard
@@ -185,14 +322,17 @@ final class GamePlayViewModel: ObservableObject {
 
         showFlavor(.pass)
 
+        if isMultiplayer && isHost {
+            broadcastState()
+        }
+
         if isGameOver {
             let results = engine.rankedResults().map { ($0.player.name, $0.score) }
             logger.logGameEnd(rankedResults: results)
             return
         }
 
-        // Pass-and-play: show interstitial if next player is a different human
-        if isPassAndPlay, let player = currentPlayer, !player.isAI {
+        if !isMultiplayer && isPassAndPlay, let player = currentPlayer, !player.isAI {
             showInterstitialFor(player: player)
         }
 
@@ -268,6 +408,10 @@ final class GamePlayViewModel: ObservableObject {
                 )
                 self.showFlavor(forced ? .forcedTake : .take)
 
+                if self.isMultiplayer && self.isHost {
+                    self.broadcastState()
+                }
+
                 if self.isGameOver {
                     let results = self.engine.rankedResults().map { ($0.player.name, $0.score) }
                     self.logger.logGameEnd(rankedResults: results)
@@ -287,6 +431,10 @@ final class GamePlayViewModel: ObservableObject {
                     cardPebblesAfter: cardPebblesBefore + 1
                 )
                 self.showFlavor(.pass)
+
+                if self.isMultiplayer && self.isHost {
+                    self.broadcastState()
+                }
 
                 if !self.isGameOver {
                     self.checkForAITurn()

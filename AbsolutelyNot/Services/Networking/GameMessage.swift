@@ -3,6 +3,7 @@ import Foundation
 enum PlayerAction: Codable, Equatable {
     case take
     case pass
+    case draw
 }
 
 enum LobbyState: Codable, Equatable {

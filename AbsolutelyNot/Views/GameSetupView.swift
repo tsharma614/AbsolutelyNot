@@ -3,6 +3,7 @@ import SwiftUI
 struct GameSetupView: View {
     @StateObject private var viewModel = GameSetupViewModel()
     @State private var navigateToGame = false
+    @State private var navigateToLobby = false
     @State private var emojiPickerIndex: Int? = nil
 
     var body: some View {
@@ -113,6 +114,24 @@ struct GameSetupView: View {
                     }
                     .disabled(!viewModel.isValid)
                     .accessibilityIdentifier("startGameButton")
+
+                    // WiFi Multiplayer button
+                    Button {
+                        navigateToLobby = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "wifi")
+                            Text("WiFi Multiplayer")
+                        }
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(Color.white.opacity(0.15))
+                        )
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 40)
@@ -121,6 +140,9 @@ struct GameSetupView: View {
         .navigationDestination(isPresented: $navigateToGame) {
             GamePlayView(config: viewModel.buildConfig())
                 .navigationBarBackButtonHidden(true)
+        }
+        .navigationDestination(isPresented: $navigateToLobby) {
+            LobbyView(mode: .wifi)
         }
         .sheet(item: $emojiPickerIndex) { index in
             EmojiPickerView(selectedEmoji: Binding(

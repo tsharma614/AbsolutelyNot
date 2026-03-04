@@ -99,6 +99,11 @@ final class GameEngine: ObservableObject {
         }
     }
 
+    /// Replace state from a network update (used by multiplayer clients)
+    func replaceState(_ newState: GameState) {
+        self.state = newState
+    }
+
     /// Get ranked results (lowest score first = winner)
     func rankedResults() -> [(player: Player, score: Int, breakdown: ScoreBreakdown)] {
         state.players.map { player in

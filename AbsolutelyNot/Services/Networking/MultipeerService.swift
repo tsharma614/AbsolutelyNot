@@ -1,7 +1,7 @@
 import Foundation
 import MultipeerConnectivity
 
-final class MultipeerService: NSObject, MultiplayerManager {
+final class MultipeerService: NSObject, MultiplayerManager, ObservableObject {
     private let serviceType = "absolutelynot"
 
     private var peerID: MCPeerID!
@@ -9,15 +9,17 @@ final class MultipeerService: NSObject, MultiplayerManager {
     private var advertiser: MCNearbyServiceAdvertiser?
     private var browser: MCNearbyServiceBrowser?
 
-    private(set) var isHost = false
-    private(set) var connectionState: ConnectionState = .disconnected
-    private(set) var connectedPlayers: [LobbyState.LobbyPlayer] = []
+    @Published private(set) var isHost = false
+    @Published private(set) var connectionState: ConnectionState = .disconnected
+    @Published private(set) var connectedPlayers: [LobbyState.LobbyPlayer] = []
 
     var onMessageReceived: ((GameMessage) -> Void)?
     var onConnectionStateChanged: ((ConnectionState) -> Void)?
 
     private var localPlayerName: String = ""
     private var localPlayerEmoji: String = ""
+
+    var localPlayerID: String { peerID?.displayName ?? localPlayerName }
 
     override init() {
         super.init()
@@ -90,9 +92,10 @@ extension MultipeerService: MCSessionDelegate {
             case .connected:
                 self.connectionState = .connected
                 if self.isHost {
-                    // Add to lobby
-                    let player = LobbyState.LobbyPlayer(id: peerID.displayName, name: peerID.displayName, emoji: "🎮")
-                    if !self.connectedPlayers.contains(where: { $0.id == player.id }) {
+                    // Player was already added from invitation context
+                    // If somehow missing (e.g. no context), add with default emoji
+                    if !self.connectedPlayers.contains(where: { $0.id == peerID.displayName }) {
+                        let player = LobbyState.LobbyPlayer(id: peerID.displayName, name: peerID.displayName, emoji: "🎮")
                         self.connectedPlayers.append(player)
                     }
                     self.broadcastLobbyUpdate()
@@ -134,6 +137,18 @@ extension MultipeerService: MCNearbyServiceAdvertiserDelegate {
         // Auto-accept connections (up to 7 players)
         let totalPlayers = session.connectedPeers.count + 1 // +1 for self
         if totalPlayers < 7 {
+            // Extract name + emoji from context
+            if let context = context,
+               let info = try? JSONDecoder().decode([String: String].self, from: context),
+               let name = info["name"],
+               let emoji = info["emoji"] {
+                DispatchQueue.main.async { [weak self] in
+                    let player = LobbyState.LobbyPlayer(id: peerID.displayName, name: name, emoji: emoji)
+                    if !(self?.connectedPlayers.contains(where: { $0.id == player.id }) ?? true) {
+                        self?.connectedPlayers.append(player)
+                    }
+                }
+            }
             invitationHandler(true, session)
         } else {
             invitationHandler(false, nil)
@@ -151,8 +166,10 @@ extension MultipeerService: MCNearbyServiceAdvertiserDelegate {
 // MARK: - MCNearbyServiceBrowserDelegate
 extension MultipeerService: MCNearbyServiceBrowserDelegate {
     func browser(_ browser: MCNearbyServiceBrowser, foundPeer peerID: MCPeerID, withDiscoveryInfo info: [String: String]?) {
-        // Auto-invite to the first found peer
-        browser.invitePeer(peerID, to: session, withContext: nil, timeout: 30)
+        // Encode name + emoji as context data in the invite
+        let contextInfo = ["name": localPlayerName, "emoji": localPlayerEmoji]
+        let contextData = try? JSONEncoder().encode(contextInfo)
+        browser.invitePeer(peerID, to: session, withContext: contextData, timeout: 30)
     }
 
     func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {}

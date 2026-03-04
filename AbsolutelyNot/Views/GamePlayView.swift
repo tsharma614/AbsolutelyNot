@@ -10,20 +10,45 @@ struct GamePlayView: View {
         _viewModel = StateObject(wrappedValue: GamePlayViewModel(config: config))
     }
 
-    /// The human player index (always shown at bottom)
-    private var humanPlayerIndex: Int {
-        viewModel.players.firstIndex(where: { !$0.isAI }) ?? 0
+    init(config: GameConfig, service: MultipeerService, localPlayerID: String, isHost: Bool) {
+        _viewModel = StateObject(wrappedValue: GamePlayViewModel(config: config, service: service, localPlayerID: localPlayerID, isHost: isHost))
     }
 
-    /// Opponents = everyone except the human at the bottom
+    /// The player shown at the bottom bar.
+    /// In multiplayer: the local player. In pass-and-play: the current player. Otherwise: the sole human.
+    private var bottomPlayerIndex: Int {
+        if viewModel.isMultiplayer {
+            // Show the local player at the bottom
+            return localPlayerIndex
+        }
+        if isPassAndPlay {
+            return viewModel.currentPlayerIndex
+        }
+        return viewModel.players.firstIndex(where: { !$0.isAI }) ?? 0
+    }
+
+    private var localPlayerIndex: Int {
+        guard let localID = viewModel.localPlayerID else { return 0 }
+        return viewModel.players.firstIndex(where: { $0.name == localID }) ?? 0
+    }
+
+    private var isPassAndPlay: Bool {
+        !viewModel.isMultiplayer && viewModel.players.filter({ !$0.isAI }).count > 1
+    }
+
+    /// Opponents in clockwise order starting from the player after bottomPlayer
     private var opponents: [(index: Int, player: Player)] {
-        viewModel.players.enumerated()
-            .filter { $0.offset != humanPlayerIndex }
-            .map { (index: $0.offset, player: $0.element) }
+        let count = viewModel.players.count
+        var result: [(index: Int, player: Player)] = []
+        for i in 1..<count {
+            let idx = (bottomPlayerIndex + i) % count
+            result.append((index: idx, player: viewModel.players[idx]))
+        }
+        return result
     }
 
-    private var humanPlayer: Player {
-        viewModel.players[safe: humanPlayerIndex] ?? viewModel.players[0]
+    private var bottomPlayer: Player {
+        viewModel.players[safe: bottomPlayerIndex] ?? viewModel.players[0]
     }
 
     var body: some View {
@@ -166,10 +191,15 @@ struct GamePlayView: View {
                     .padding(.vertical, 4)
                     .background(Capsule().fill(Color.black.opacity(0.5)))
             } else if let player = viewModel.currentPlayer {
-                let isHuman = !player.isAI
-                Text(isHuman ? "Your turn" : "\(player.name) is thinking...")
+                let isMyTurn: Bool = {
+                    if viewModel.isMultiplayer {
+                        return player.name == viewModel.localPlayerID
+                    }
+                    return !player.isAI
+                }()
+                Text(isMyTurn ? "Your turn" : "\(player.name)'s turn...")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundColor(isHuman ? AppColors.goldAccent : .white.opacity(0.7))
+                    .foregroundColor(isMyTurn ? AppColors.goldAccent : .white.opacity(0.7))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 4)
                     .background(Capsule().fill(Color.black.opacity(0.5)))
@@ -183,9 +213,9 @@ struct GamePlayView: View {
         VStack(spacing: 6) {
             // Player info bar
             HStack {
-                Text(humanPlayer.emoji)
+                Text(bottomPlayer.emoji)
                     .font(.system(size: 20))
-                Text(humanPlayer.name)
+                Text(bottomPlayer.name)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white)
                 Spacer()
@@ -200,7 +230,7 @@ struct GamePlayView: View {
 
                 HStack(spacing: 3) {
                     PebbleView(size: 12)
-                    Text("\(humanPlayer.pebbles)")
+                    Text("\(bottomPlayer.pebbles)")
                         .font(.system(size: 14, weight: .bold, design: .rounded))
                         .foregroundColor(AppColors.goldAccent)
                 }
@@ -209,7 +239,7 @@ struct GamePlayView: View {
 
             // Cards + Action buttons
             HStack(alignment: .bottom, spacing: 8) {
-                PlayerHandView(cards: humanPlayer.collectedCards, highlightCardId: viewModel.lastAddedCardId)
+                PlayerHandView(cards: bottomPlayer.collectedCards, highlightCardId: viewModel.lastAddedCardId)
                     .frame(maxWidth: .infinity)
 
                 // Action buttons
