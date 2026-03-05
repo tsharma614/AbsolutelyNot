@@ -53,6 +53,7 @@ final class GamePlayViewModel: ObservableObject {
     var humanShouldDraw: Bool {
         // Block draw while interstitial is showing (pass-and-play handoff)
         if showInterstitial { return false }
+        if isPassAndPlay && !turnRevealed { return false }
         if case .awaitingDraw(let idx) = state.phase {
             if isMultiplayer {
                 return isLocalPlayerIndex(idx)
@@ -73,6 +74,11 @@ final class GamePlayViewModel: ObservableObject {
         }
         logger.logGameStart(config: config)
         checkForAITurn()
+
+        // Pass-and-play: show initial interstitial so Player 0's info isn't leaked
+        if isPassAndPlay, let player = engine.state.players.first, !player.isAI {
+            showInterstitialFor(player: player)
+        }
     }
 
     /// For testing or network sync
@@ -432,6 +438,11 @@ final class GamePlayViewModel: ObservableObject {
                 } else {
                     // AI must also draw the next card
                     self.checkForAIDraw()
+                    // Pass-and-play: if draw falls to a human, show interstitial
+                    if case .awaitingDraw(let drawIdx) = self.state.phase,
+                       !self.state.players[drawIdx].isAI, self.isPassAndPlay {
+                        self.showInterstitialFor(player: self.state.players[drawIdx])
+                    }
                 }
             } else {
                 self.engine.passCard()
@@ -451,7 +462,13 @@ final class GamePlayViewModel: ObservableObject {
                 }
 
                 if !self.isGameOver {
-                    self.checkForAITurn()
+                    // Pass-and-play: if next player is human, show interstitial
+                    if case .playerTurn = self.state.phase, self.isPassAndPlay,
+                       let player = self.currentPlayer, !player.isAI {
+                        self.showInterstitialFor(player: player)
+                    } else {
+                        self.checkForAITurn()
+                    }
                 } else {
                     let results = self.engine.rankedResults().map { ($0.player.name, $0.score) }
                     self.logger.logGameEnd(rankedResults: results)
