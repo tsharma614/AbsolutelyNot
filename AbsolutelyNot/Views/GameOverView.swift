@@ -10,6 +10,8 @@ struct GameOverView: View {
 
     @State private var showConfetti = false
     @State private var rowsAppeared = false
+    @State private var shareImage: UIImage? = nil
+    @State private var showShareSheet = false
 
     var body: some View {
         ZStack {
@@ -56,6 +58,26 @@ struct GameOverView: View {
                     // Action buttons
                     VStack(spacing: 12) {
                         Button {
+                            shareImage = viewModel.renderShareImage()
+                            if shareImage != nil {
+                                showShareSheet = true
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "square.and.arrow.up")
+                                Text("Share Results")
+                            }
+                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .fill(Color.white.opacity(0.15))
+                            )
+                        }
+
+                        Button {
                             navigateToSetup = true
                         } label: {
                             Text("New Game")
@@ -85,6 +107,11 @@ struct GameOverView: View {
             HapticManager.notification(.success)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 rowsAppeared = true
+            }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let image = shareImage {
+                ShareSheet(items: [image])
             }
         }
         .navigationDestination(isPresented: $navigateToSetup) {

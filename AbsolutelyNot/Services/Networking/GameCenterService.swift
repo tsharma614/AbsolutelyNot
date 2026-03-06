@@ -101,6 +101,14 @@ final class GameCenterService: NSObject, MultiplayerManager {
         try match.sendData(toAllPlayers: data, with: .reliable)
     }
 
+    func markGameActive() {
+        // Game Center handles reconnection internally
+    }
+
+    func sendGracefulDisconnect() {
+        disconnect()
+    }
+
     func disconnect() {
         match?.disconnect()
         match = nil

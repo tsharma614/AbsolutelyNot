@@ -358,4 +358,67 @@ final class GamePlayViewModelTests: XCTestCase {
         }
         wait(for: [exp], timeout: 16.0)
     }
+
+    // MARK: - Pause blocks actions
+
+    func testPausedBlocksCanTake() {
+        let vm = makeViewModel()
+        vm.dismissInterstitial()
+        XCTAssertTrue(vm.canTake)
+        vm.isGamePaused = true
+        XCTAssertFalse(vm.canTake, "canTake should be false when game is paused")
+    }
+
+    func testPausedBlocksCanPass() {
+        let vm = makeViewModel()
+        vm.dismissInterstitial()
+        XCTAssertTrue(vm.canPass)
+        vm.isGamePaused = true
+        XCTAssertFalse(vm.canPass, "canPass should be false when game is paused")
+    }
+
+    func testPausedBlocksHumanShouldDraw() {
+        let vm = makeViewModel()
+        vm.dismissInterstitial()
+        vm.takeCard()
+        vm.dismissInterstitial()
+        XCTAssertTrue(vm.humanShouldDraw)
+        vm.isGamePaused = true
+        XCTAssertFalse(vm.humanShouldDraw, "humanShouldDraw should be false when game is paused")
+    }
+
+    // MARK: - Run highlight detection
+
+    func testRunHighlightOnConsecutiveTake() {
+        // Player has card 9, takes card 10 — should highlight the run {9, 10}
+        var player0 = Player(name: "H0", emoji: "🧑", isAI: false, pebbles: 11)
+        player0.addCard(Card(value: 9), withPebbles: 0)
+        let players = [
+            player0,
+            Player(name: "H1", emoji: "🧑", isAI: false, pebbles: 11),
+            Player(name: "H2", emoji: "🧑", isAI: false, pebbles: 11),
+        ]
+        let vm = makePassAndPlayVM(players: players, currentCard: Card(value: 10), drawPile: makeDeck(10, startingAt: 20))
+
+        vm.takeCard()
+
+        XCTAssertNotNil(vm.highlightRunValues, "Run highlight should be set after taking a consecutive card")
+        XCTAssertEqual(vm.highlightRunValues, Set([9, 10]))
+    }
+
+    func testNoRunHighlightOnNonConsecutiveTake() {
+        // Player has card 5, takes card 10 — should NOT highlight
+        var player0 = Player(name: "H0", emoji: "🧑", isAI: false, pebbles: 11)
+        player0.addCard(Card(value: 5), withPebbles: 0)
+        let players = [
+            player0,
+            Player(name: "H1", emoji: "🧑", isAI: false, pebbles: 11),
+            Player(name: "H2", emoji: "🧑", isAI: false, pebbles: 11),
+        ]
+        let vm = makePassAndPlayVM(players: players, currentCard: Card(value: 10), drawPile: makeDeck(10, startingAt: 20))
+
+        vm.takeCard()
+
+        XCTAssertNil(vm.highlightRunValues, "Run highlight should be nil when card doesn't form a run")
+    }
 }

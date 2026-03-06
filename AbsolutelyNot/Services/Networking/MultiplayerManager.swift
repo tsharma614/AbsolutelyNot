@@ -19,4 +19,6 @@ protocol MultiplayerManager: AnyObject {
     func joinGame(playerName: String, playerEmoji: String)
     func send(_ message: GameMessage) throws
     func disconnect()
+    func markGameActive()
+    func sendGracefulDisconnect()
 }

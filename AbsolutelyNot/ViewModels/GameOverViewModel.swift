@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct PlayerResult: Identifiable {
     let id: UUID
@@ -33,5 +34,11 @@ final class GameOverViewModel: ObservableObject {
 
     var winner: PlayerResult? {
         results.first
+    }
+
+    func renderShareImage() -> UIImage? {
+        let renderer = ImageRenderer(content: ShareCardView(results: results))
+        renderer.scale = UIScreen.main.scale
+        return renderer.uiImage
     }
 }

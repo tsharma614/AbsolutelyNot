@@ -19,6 +19,11 @@ final class GamePlayViewModel: ObservableObject {
     @Published var isFlavorBold = false
     @Published var lastAddedCardId: Int? = nil
     @Published var showCardFlip = false
+    @Published var highlightRunValues: Set<Int>? = nil
+    @Published var isGamePaused = false
+    @Published var pauseReason = ""
+    @Published var disconnectedPlayerName: String? = nil
+    @Published var hostDisconnected = false
     /// In pass-and-play, true once the current human has dismissed the interstitial
     @Published var turnRevealed = true
 
@@ -51,6 +56,7 @@ final class GamePlayViewModel: ObservableObject {
 
     /// Whether the human player should tap the deck
     var humanShouldDraw: Bool {
+        if isGamePaused { return false }
         // Block draw while interstitial is showing (pass-and-play handoff)
         if showInterstitial { return false }
         if isPassAndPlay && !turnRevealed { return false }
@@ -108,6 +114,8 @@ final class GamePlayViewModel: ObservableObject {
 
         logger.logGameStart(config: config)
         setupMultiplayerHandlers()
+        setupReconnectionHandlers()
+        service.markGameActive()
 
         // Host broadcasts initial state and kicks off AI if needed
         if isHost {
@@ -126,6 +134,59 @@ final class GamePlayViewModel: ObservableObject {
         }
     }
 
+    private func setupReconnectionHandlers() {
+        multiplayerService?.onPeerReconnecting = { [weak self] peerName in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.disconnectedPlayerName = peerName
+                self.isGamePaused = true
+                self.pauseReason = "\(peerName) disconnected"
+                self.aiTask?.cancel()
+                if self.isHost {
+                    try? self.multiplayerService?.send(.gamePaused(reason: "\(peerName) disconnected"))
+                }
+            }
+        }
+
+        multiplayerService?.onPeerReconnected = { [weak self] peerName in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.isGamePaused = false
+                self.disconnectedPlayerName = nil
+                self.pauseReason = ""
+                if self.isHost {
+                    self.broadcastState()
+                    try? self.multiplayerService?.send(.gameResumed)
+                    self.checkForAITurn()
+                }
+            }
+        }
+
+        multiplayerService?.onPeerReconnectionFailed = { [weak self] peerName in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.isGamePaused = false
+                self.disconnectedPlayerName = nil
+                self.pauseReason = ""
+                // Game continues without the player
+                if self.isHost {
+                    try? self.multiplayerService?.send(.gameResumed)
+                    self.checkForAITurn()
+                }
+            }
+        }
+
+        // Detect host disconnect (clients only)
+        multiplayerService?.onConnectionStateChanged = { [weak self] newState in
+            Task { @MainActor in
+                guard let self = self, !self.isHost else { return }
+                if case .disconnected = newState {
+                    self.hostDisconnected = true
+                }
+            }
+        }
+    }
+
     private func handleMultiplayerMessage(_ message: GameMessage) {
         switch message {
         case .playerAction(let action, let playerID):
@@ -134,6 +195,19 @@ final class GamePlayViewModel: ObservableObject {
         case .gameState(let newState):
             guard !isHost else { return }
             engine.replaceState(newState)
+        case .gamePaused(let reason):
+            guard !isHost else { return }
+            isGamePaused = true
+            pauseReason = reason
+            aiTask?.cancel()
+        case .gameResumed:
+            guard !isHost else { return }
+            isGamePaused = false
+            pauseReason = ""
+            disconnectedPlayerName = nil
+        case .playerLeaving:
+            // Handled by MultipeerService directly
+            break
         default:
             break
         }
@@ -178,6 +252,7 @@ final class GamePlayViewModel: ObservableObject {
     // MARK: - Action properties
 
     var canTake: Bool {
+        if isGamePaused { return false }
         if isPassAndPlay && !turnRevealed { return false }
         guard case .playerTurn = state.phase else { return false }
         guard currentCard != nil && !isGameOver else { return false }
@@ -188,6 +263,7 @@ final class GamePlayViewModel: ObservableObject {
     }
 
     var canPass: Bool {
+        if isGamePaused { return false }
         if isPassAndPlay && !turnRevealed { return false }
         guard case .playerTurn = state.phase else { return false }
         guard let player = currentPlayer else { return false }
@@ -226,6 +302,12 @@ final class GamePlayViewModel: ObservableObject {
 
         // Track the card just added to highlight it in hand
         lastAddedCardId = takenCardId
+
+        // Detect if taken card created/extended a run
+        if let takenValue = takenCardId,
+           let updatedPlayer = state.players.first(where: { $0.id == player.id }) {
+            highlightRunIfNeeded(takenValue: takenValue, cards: updatedPlayer.collectedCards)
+        }
 
         let pebblesAfter = state.players.first(where: { $0.id == player.id })?.pebbles ?? 0
         logger.logTurn(
@@ -388,6 +470,7 @@ final class GamePlayViewModel: ObservableObject {
     }
 
     private func checkForAITurn() {
+        guard !isGamePaused else { return }
         guard case .aiThinking(let playerIndex) = state.phase else { return }
 
         aiTask?.cancel()
@@ -477,6 +560,24 @@ final class GamePlayViewModel: ObservableObject {
         }
     }
 
+    private func highlightRunIfNeeded(takenValue: Int, cards: [Card]) {
+        let values = Set(cards.map { $0.value })
+        guard values.contains(takenValue - 1) || values.contains(takenValue + 1) else { return }
+
+        // Walk the consecutive sequence containing takenValue
+        var runValues = Set<Int>()
+        var v = takenValue
+        while values.contains(v) { v -= 1 }
+        v += 1
+        while values.contains(v) { runValues.insert(v); v += 1 }
+
+        highlightRunValues = runValues
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64(AppAnimation.runHighlightDuration * 1_000_000_000))
+            highlightRunValues = nil
+        }
+    }
+
     private func showFlavor(_ category: FlavorCategory) {
         let text: String
         let bold: Bool
@@ -505,6 +606,10 @@ final class GamePlayViewModel: ObservableObject {
                 showFlavorText = false
             }
         }
+    }
+
+    func sendGracefulDisconnect() {
+        multiplayerService?.sendGracefulDisconnect()
     }
 
     deinit {

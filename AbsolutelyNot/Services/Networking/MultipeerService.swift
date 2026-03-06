@@ -12,12 +12,19 @@ final class MultipeerService: NSObject, MultiplayerManager, ObservableObject {
     @Published private(set) var isHost = false
     @Published private(set) var connectionState: ConnectionState = .disconnected
     @Published private(set) var connectedPlayers: [LobbyState.LobbyPlayer] = []
+    @Published private(set) var disconnectedPeers: [String: Date] = [:]
+    @Published private(set) var isGameActive = false
 
     var onMessageReceived: ((GameMessage) -> Void)?
     var onConnectionStateChanged: ((ConnectionState) -> Void)?
+    var onPeerReconnecting: ((String) -> Void)?
+    var onPeerReconnected: ((String) -> Void)?
+    var onPeerReconnectionFailed: ((String) -> Void)?
 
     private var localPlayerName: String = ""
     private var localPlayerEmoji: String = ""
+    private var reconnectionTimers: [String: Task<Void, Never>] = [:]
+    private var gracefullyLeft: Set<String> = []
 
     var localPlayerID: String { peerID?.displayName ?? localPlayerName }
 
@@ -67,12 +74,25 @@ final class MultipeerService: NSObject, MultiplayerManager, ObservableObject {
         try session.send(data, toPeers: session.connectedPeers, with: .reliable)
     }
 
+    func markGameActive() {
+        isGameActive = true
+    }
+
+    func sendGracefulDisconnect() {
+        try? send(.playerLeaving(playerID: localPlayerID))
+        disconnect()
+    }
+
     func disconnect() {
+        reconnectionTimers.values.forEach { $0.cancel() }
+        reconnectionTimers.removeAll()
         advertiser?.stopAdvertisingPeer()
         browser?.stopBrowsingForPeers()
         session?.disconnect()
         connectionState = .disconnected
         connectedPlayers = []
+        disconnectedPeers = [:]
+        isGameActive = false
         onConnectionStateChanged?(.disconnected)
     }
 
@@ -88,28 +108,69 @@ extension MultipeerService: MCSessionDelegate {
     func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            let peerName = peerID.displayName
+
             switch state {
             case .connected:
                 self.connectionState = .connected
-                if self.isHost {
-                    // Player was already added from invitation context
-                    // If somehow missing (e.g. no context), add with default emoji
-                    if !self.connectedPlayers.contains(where: { $0.id == peerID.displayName }) {
-                        let player = LobbyState.LobbyPlayer(id: peerID.displayName, name: peerID.displayName, emoji: "🎮")
+                // Check if this is a reconnection
+                if self.disconnectedPeers[peerName] != nil {
+                    self.disconnectedPeers.removeValue(forKey: peerName)
+                    self.reconnectionTimers[peerName]?.cancel()
+                    self.reconnectionTimers.removeValue(forKey: peerName)
+                    self.onPeerReconnected?(peerName)
+                } else if self.isHost {
+                    // New connection during lobby
+                    if !self.connectedPlayers.contains(where: { $0.id == peerName }) {
+                        let player = LobbyState.LobbyPlayer(id: peerName, name: peerName, emoji: "🎮")
                         self.connectedPlayers.append(player)
                     }
                     self.broadcastLobbyUpdate()
                 }
                 self.onConnectionStateChanged?(.connected)
+
             case .notConnected:
-                if self.isHost {
-                    self.connectedPlayers.removeAll { $0.id == peerID.displayName }
-                    self.broadcastLobbyUpdate()
+                if self.gracefullyLeft.contains(peerName) {
+                    // Graceful disconnect — remove immediately
+                    self.gracefullyLeft.remove(peerName)
+                    self.connectedPlayers.removeAll { $0.id == peerName }
+                    if self.isHost { self.broadcastLobbyUpdate() }
+                } else if self.isGameActive {
+                    // Unexpected disconnect during game — start reconnection window
+                    self.disconnectedPeers[peerName] = Date()
+                    self.onPeerReconnecting?(peerName)
+
+                    // Host restarts advertiser so dropped peer can rediscover
+                    if self.isHost {
+                        self.advertiser?.stopAdvertisingPeer()
+                        self.advertiser?.startAdvertisingPeer()
+                    }
+
+                    // 15-second reconnection timer
+                    self.reconnectionTimers[peerName]?.cancel()
+                    self.reconnectionTimers[peerName] = Task { [weak self] in
+                        try? await Task.sleep(nanoseconds: 15_000_000_000)
+                        guard !Task.isCancelled else { return }
+                        await MainActor.run {
+                            guard let self = self else { return }
+                            if self.disconnectedPeers.removeValue(forKey: peerName) != nil {
+                                self.connectedPlayers.removeAll { $0.id == peerName }
+                                self.reconnectionTimers.removeValue(forKey: peerName)
+                                self.onPeerReconnectionFailed?(peerName)
+                            }
+                        }
+                    }
+                } else {
+                    // Lobby disconnect — remove immediately
+                    self.connectedPlayers.removeAll { $0.id == peerName }
+                    if self.isHost { self.broadcastLobbyUpdate() }
                 }
-                if session.connectedPeers.isEmpty {
+
+                if session.connectedPeers.isEmpty && self.disconnectedPeers.isEmpty {
                     self.connectionState = .disconnected
                     self.onConnectionStateChanged?(.disconnected)
                 }
+
             case .connecting:
                 self.connectionState = .connecting
                 self.onConnectionStateChanged?(.connecting)
@@ -122,6 +183,10 @@ extension MultipeerService: MCSessionDelegate {
     func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
         guard let message = try? GameMessage.decoded(from: data) else { return }
         DispatchQueue.main.async { [weak self] in
+            // Handle playerLeaving locally to skip reconnection
+            if case .playerLeaving(let playerID) = message {
+                self?.gracefullyLeft.insert(playerID)
+            }
             self?.onMessageReceived?(message)
         }
     }

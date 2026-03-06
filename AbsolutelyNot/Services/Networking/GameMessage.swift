@@ -22,6 +22,9 @@ enum GameMessage: Codable, Equatable {
     case playerAction(PlayerAction, playerID: String)
     case lobbyUpdate(LobbyState)
     case startGame(GameConfig)
+    case playerLeaving(playerID: String)
+    case gamePaused(reason: String)
+    case gameResumed
 
     func encoded() throws -> Data {
         try JSONEncoder().encode(self)

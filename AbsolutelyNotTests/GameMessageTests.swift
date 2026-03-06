@@ -56,4 +56,25 @@ final class GameMessageTests: XCTestCase {
         let badData = "not json".data(using: .utf8)!
         XCTAssertThrowsError(try GameMessage.decoded(from: badData))
     }
+
+    func testPlayerLeavingEncodeDecode() throws {
+        let original = GameMessage.playerLeaving(playerID: "player1")
+        let data = try original.encoded()
+        let decoded = try GameMessage.decoded(from: data)
+        XCTAssertEqual(decoded, original)
+    }
+
+    func testGamePausedEncodeDecode() throws {
+        let original = GameMessage.gamePaused(reason: "Player disconnected")
+        let data = try original.encoded()
+        let decoded = try GameMessage.decoded(from: data)
+        XCTAssertEqual(decoded, original)
+    }
+
+    func testGameResumedEncodeDecode() throws {
+        let original = GameMessage.gameResumed
+        let data = try original.encoded()
+        let decoded = try GameMessage.decoded(from: data)
+        XCTAssertEqual(decoded, original)
+    }
 }

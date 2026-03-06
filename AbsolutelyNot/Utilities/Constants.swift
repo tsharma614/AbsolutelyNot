@@ -37,4 +37,6 @@ enum AppAnimation {
     static let flavorTextIn: Double = 0.4
     static let flavorTextHold: Double = 1.5
     static let flavorTextOut: Double = 0.3
+    static let cardDealDelay: Double = 0.2
+    static let runHighlightDuration: Double = 2.0
 }

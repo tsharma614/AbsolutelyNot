@@ -3,13 +3,14 @@ import SwiftUI
 struct PlayerHandView: View {
     let cards: [Card]
     var highlightCardId: Int? = nil
+    var highlightRunValues: Set<Int>? = nil
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(Array(groupedCards.enumerated()), id: \.offset) { _, group in
-                        HandRunStack(cards: group, highlightCardId: highlightCardId)
+                        HandRunStack(cards: group, highlightCardId: highlightCardId, highlightRunValues: highlightRunValues)
                     }
                 }
                 .padding(.horizontal, 12)
@@ -50,6 +51,14 @@ struct PlayerHandView: View {
 struct HandRunStack: View {
     let cards: [Card]
     var highlightCardId: Int? = nil
+    var highlightRunValues: Set<Int>? = nil
+
+    @State private var runGlowOpacity: Double = 0
+
+    private var stackMatchesRunHighlight: Bool {
+        guard let runValues = highlightRunValues else { return false }
+        return cards.contains { runValues.contains($0.value) }
+    }
 
     var body: some View {
         let isRun = cards.count > 1
@@ -63,10 +72,22 @@ struct HandRunStack: View {
                     .offset(y: CGFloat(index) * AppLayout.runStackOffset)
             }
         }
+        .shadow(color: AppColors.goldAccent.opacity(runGlowOpacity), radius: 12)
         .frame(
             width: AppLayout.handCardWidth,
             height: AppLayout.handCardHeight + CGFloat(max(0, cards.count - 1)) * AppLayout.runStackOffset
         )
+        .onChange(of: highlightRunValues) { _, newValues in
+            if newValues != nil && stackMatchesRunHighlight {
+                withAnimation(.easeOut(duration: 0.4)) { runGlowOpacity = 0.6 }
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                    withAnimation(.easeOut(duration: 0.5)) { runGlowOpacity = 0 }
+                }
+            } else {
+                runGlowOpacity = 0
+            }
+        }
     }
 }
 

@@ -6,6 +6,11 @@ struct GamePlayView: View {
     @State private var showRules = false
     @State private var cardFlipRotation: Double = 0
     @State private var lastRevealedPlayerIndex: Int = 0
+    @State private var hasDealt = false
+    @State private var showPebbleSlide = false
+    @State private var pebbleSlideProgress: CGFloat = 0
+    @State private var pebbleSourcePoint: CGPoint = .zero
+    @State private var pebbleDestPoint: CGPoint = .zero
 
     init(config: GameConfig) {
         _viewModel = StateObject(wrappedValue: GamePlayViewModel(config: config))
@@ -110,6 +115,8 @@ struct GamePlayView: View {
                     .disabled(!viewModel.humanShouldDraw)
                     .accessibilityIdentifier("deckButton")
                 }
+                .scaleEffect(hasDealt ? 1.0 : 0.3)
+                .opacity(hasDealt ? 1.0 : 0)
                 .position(x: geo.size.width / 2, y: tableHeight * 0.45)
 
                 // Turn indicator banner
@@ -149,6 +156,34 @@ struct GamePlayView: View {
                 Spacer()
                 bottomBar
             }
+
+            // Pebble slide animation overlay
+            if showPebbleSlide {
+                PebbleView(size: AppLayout.pebbleSize)
+                    .position(
+                        x: pebbleSourcePoint.x + (pebbleDestPoint.x - pebbleSourcePoint.x) * pebbleSlideProgress,
+                        y: pebbleSourcePoint.y + (pebbleDestPoint.y - pebbleSourcePoint.y) * pebbleSlideProgress
+                    )
+                    .allowsHitTesting(false)
+            }
+
+            // Multiplayer connection overlays
+            if viewModel.isGamePaused {
+                ConnectionLostOverlay(playerName: viewModel.disconnectedPlayerName ?? "A player")
+            }
+            if viewModel.hostDisconnected {
+                HostDisconnectedOverlay {
+                    navigateToGameOver = false
+                    // Pop to root by navigating to setup
+                }
+            }
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + AppAnimation.cardDealDelay) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                    hasDealt = true
+                }
+            }
         }
         .fullScreenCover(isPresented: $viewModel.showInterstitial) {
             InterstitialView(
@@ -182,6 +217,11 @@ struct GamePlayView: View {
         }
         .sheet(isPresented: $showRules) {
             RulesView()
+        }
+        .onDisappear {
+            if viewModel.isMultiplayer {
+                viewModel.sendGracefulDisconnect()
+            }
         }
     }
 
@@ -255,7 +295,7 @@ struct GamePlayView: View {
                 if hidePrivateInfo {
                     Spacer()
                 } else {
-                    PlayerHandView(cards: bottomPlayer.collectedCards, highlightCardId: viewModel.lastAddedCardId)
+                    PlayerHandView(cards: bottomPlayer.collectedCards, highlightCardId: viewModel.lastAddedCardId, highlightRunValues: viewModel.highlightRunValues)
                         .frame(maxWidth: .infinity)
                 }
 
@@ -280,9 +320,7 @@ struct GamePlayView: View {
                     .accessibilityIdentifier("takeButton")
 
                     Button {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                            viewModel.passCard()
-                        }
+                        animatePebbleSlide()
                     } label: {
                         Text("Pass")
                             .font(.system(size: 14, weight: .bold, design: .rounded))
@@ -349,6 +387,29 @@ struct GamePlayView: View {
         let y = size.height * 0.35 - radiusY * sin(angle)
 
         return CGPoint(x: x, y: max(topMargin, y))
+    }
+
+    private func animatePebbleSlide() {
+        guard viewModel.canPass else { return }
+        // Animate from bottom-right (pebble count area) toward center
+        let screenWidth = UIScreen.main.bounds.width
+        let screenHeight = UIScreen.main.bounds.height
+        pebbleSourcePoint = CGPoint(x: screenWidth - 50, y: screenHeight - 170)
+        pebbleDestPoint = CGPoint(x: screenWidth / 2, y: screenHeight * 0.38)
+        pebbleSlideProgress = 0
+        showPebbleSlide = true
+
+        withAnimation(.easeInOut(duration: AppAnimation.pebbleSlideDuration)) {
+            pebbleSlideProgress = 1.0
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + AppAnimation.pebbleSlideDuration) {
+            showPebbleSlide = false
+            pebbleSlideProgress = 0
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                viewModel.passCard()
+            }
+        }
     }
 }
 

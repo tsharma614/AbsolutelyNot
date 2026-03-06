@@ -288,6 +288,7 @@ struct LobbyView: View {
         )
         gameConfig = config
         try? service.send(.startGame(config))
+        service.markGameActive()
         navigateToGame = true
     }
 }
